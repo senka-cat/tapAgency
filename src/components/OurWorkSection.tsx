@@ -344,6 +344,20 @@ function WorkCard({
             {work.description}
           </p>
         </div>
+        
+        {/* Arrow indicator */}
+        <div className="flex-shrink-0 flex items-center">
+          <motion.div
+            animate={{ rotate: isActive ? 90 : 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            <ChevronRight 
+              className="w-5 h-5 md:w-6 md:h-6" 
+              style={{ color: work.accent }}
+              strokeWidth={2.5}
+            />
+          </motion.div>
+        </div>
       </div>
       
       {/* Floating accent dots */}
@@ -743,7 +757,33 @@ function WorkGalleryPanel({ work }: { work: WorkPost }) {
 export function OurWorkSection() {
   const { t } = useLanguage();
   const workPosts = getWorkPosts(t);
-  const [selectedWork, setSelectedWork] = useState(0);
+  // On mobile start closed, on desktop start with first tab open
+  const [selectedWork, setSelectedWork] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768 ? -1 : 0;
+    }
+    return 0;
+  });
+
+  // Handle window resize to update selectedWork state
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        // Mobile: close if currently open
+        if (selectedWork >= 0) {
+          setSelectedWork(-1);
+        }
+      } else {
+        // Desktop: open first tab if currently closed
+        if (selectedWork < 0) {
+          setSelectedWork(0);
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [selectedWork]);
 
   return (
     <section id="blog" className="relative py-16 md:py-24 bg-[#0A0A0A]">
@@ -826,33 +866,49 @@ export function OurWorkSection() {
                     />
                   ))}
                   
-                  <div className="relative z-10">
-                    {/* Icon */}
-                    <div 
-                      className="p-2.5 rounded-lg inline-block mb-2"
-                      style={{
-                        backgroundColor: isExpanded ? `${work.accent}30` : `${work.accent}15`,
-                      }}
-                    >
-                      <Icon 
-                        className="w-5 h-5" 
-                        style={{ color: work.accent }} 
-                        strokeWidth={1.5} 
-                      />
+                  <div className="relative z-10 flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      {/* Icon */}
+                      <div 
+                        className="p-2.5 rounded-lg inline-block mb-2"
+                        style={{
+                          backgroundColor: isExpanded ? `${work.accent}30` : `${work.accent}15`,
+                        }}
+                      >
+                        <Icon 
+                          className="w-5 h-5" 
+                          style={{ color: work.accent }} 
+                          strokeWidth={1.5} 
+                        />
+                      </div>
+                      
+                      {/* Title */}
+                      <h3 
+                        className="font-['Josefin_Sans'] text-lg mb-1 transition-colors duration-300"
+                        style={{ color: isExpanded ? work.accent : '#ECE7E1' }}
+                      >
+                        {work.title}
+                      </h3>
+                      
+                      {/* Description */}
+                      <p className="font-['Lato'] text-[#ECE7E1]/70 text-xs leading-relaxed">
+                        {work.description}
+                      </p>
                     </div>
                     
-                    {/* Title */}
-                    <h3 
-                      className="font-['Josefin_Sans'] text-lg mb-1 transition-colors duration-300"
-                      style={{ color: isExpanded ? work.accent : '#ECE7E1' }}
-                    >
-                      {work.title}
-                    </h3>
-                    
-                    {/* Description */}
-                    <p className="font-['Lato'] text-[#ECE7E1]/70 text-xs leading-relaxed">
-                      {work.description}
-                    </p>
+                    {/* Arrow indicator */}
+                    <div className="flex-shrink-0 flex items-center pt-1">
+                      <motion.div
+                        animate={{ rotate: isExpanded ? 90 : 0 }}
+                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                      >
+                        <ChevronRight 
+                          className="w-5 h-5" 
+                          style={{ color: work.accent }}
+                          strokeWidth={2.5}
+                        />
+                      </motion.div>
+                    </div>
                   </div>
                 </motion.button>
 

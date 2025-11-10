@@ -133,52 +133,80 @@ export function Footer() {
             {/* Company Links */}
             <div>
               <h4 className="font-['Josefin_Sans'] text-[#ECE7E1] mb-4 text-sm">
-                Company
+                {t('footer.company')}
               </h4>
               <nav className="space-y-1.5">
                 <motion.a
-                  key="About"
-                  href="#about"
+                  key="Creative"
+                  href="#creative"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const section = document.getElementById('creative');
+                    if (section) {
+                      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
                   initial={{ opacity: 0, x: -20 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: 0.25 }}
                   className="font-['Lato'] block text-[#ECE7E1]/50 hover:text-[#51AE92] hover:translate-x-1 transition-all duration-300 text-xs"
                 >
-                  About
+                  {t('nav.creative')}
                 </motion.a>
                 <motion.a
-                  key="Work"
-                  href="#blog"
+                  key="Marketing"
+                  href="#marketing"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const section = document.getElementById('marketing');
+                    if (section) {
+                      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
                   initial={{ opacity: 0, x: -20 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: 0.30 }}
                   className="font-['Lato'] block text-[#ECE7E1]/50 hover:text-[#51AE92] hover:translate-x-1 transition-all duration-300 text-xs"
                 >
-                  Work
+                  {t('nav.marketing')}
                 </motion.a>
                 <motion.a
-                  key="Careers"
-                  href="#"
+                  key="Our Work"
+                  href="#blog"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const section = document.getElementById('blog');
+                    if (section) {
+                      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
                   initial={{ opacity: 0, x: -20 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: 0.35 }}
                   className="font-['Lato'] block text-[#ECE7E1]/50 hover:text-[#51AE92] hover:translate-x-1 transition-all duration-300 text-xs"
                 >
-                  Careers
+                  {t('nav.insights')}
                 </motion.a>
                 <motion.a
                   key="Contact"
                   href="#contact"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const section = document.getElementById('contact');
+                    if (section) {
+                      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
                   initial={{ opacity: 0, x: -20 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: 0.40 }}
                   className="font-['Lato'] block text-[#ECE7E1]/50 hover:text-[#51AE92] hover:translate-x-1 transition-all duration-300 text-xs"
                 >
-                  Contact
+                  {t('nav.contact')}
                 </motion.a>
               </nav>
             </div>

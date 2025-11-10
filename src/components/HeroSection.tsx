@@ -133,6 +133,7 @@ function StatCounter({
 export function HeroSection() {
   const [scrolled, setScrolled] = useState(false);
   const [heroHeight, setHeroHeight] = useState(0);
+  const [isDesktop, setIsDesktop] = useState(false);
   const { language, setLanguage, t } = useLanguage();
 
   const calculateSectionScrollTarget = useCallback((section: HTMLElement) => {
@@ -172,6 +173,12 @@ export function HeroSection() {
   const imageY = useTransform(mouseYSpring, [-0.5, 0.5], [-15, 15]);
 
   useEffect(() => {
+    // Check if desktop on mount and resize
+    const checkDesktop = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    checkDesktop();
+
     // Get hero section height
     const heroSection = document.getElementById('hero');
     if (heroSection) {
@@ -198,28 +205,37 @@ export function HeroSection() {
       mouseY.set(y);
     };
 
-    window.addEventListener('scroll', handleScroll);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('resize', () => {
+    const handleResize = () => {
+      checkDesktop();
       const heroSection = document.getElementById('hero');
       if (heroSection) {
         setHeroHeight(heroSection.clientHeight);
       }
-    });
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('resize', handleResize);
     
     handleScroll(); // Check initial state
     
     return () => {
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('resize', handleScroll);
+      window.removeEventListener('resize', handleResize);
     };
   }, [heroHeight, mouseX, mouseY]);
 
   const scrollingLogos = [...partnerLogos, ...partnerLogos];
 
   return (
-    <section id="hero" className="relative py-8 px-4 sm:px-6 bg-[#0A0A0A] overflow-hidden">
+    <section 
+      id="hero" 
+      className="relative pb-8 px-4 sm:px-6 bg-[#0A0A0A] overflow-hidden"
+      style={{
+        paddingTop: isDesktop ? '120px' : '8px'
+      }}
+    >
       
       {/* Subtle Background Gradient for Depth */}
       <div className="absolute inset-0 pointer-events-none">
@@ -437,7 +453,7 @@ export function HeroSection() {
       {/* Language Switcher Button - Separate Circle */}
       <motion.button
         onClick={() => setLanguage(language === 'en' ? 'bs' : 'en')}
-        className="rounded-full relative overflow-hidden group flex items-center justify-center backdrop-blur-2xl border pointer-events-auto"
+        className="rounded-full relative overflow-hidden group flex items-center justify-center backdrop-blur-2xl border pointer-events-auto flex-shrink-0"
         initial={{ opacity: 0, y: -20 }}
         animate={{ 
           opacity: 1, 
@@ -476,7 +492,7 @@ export function HeroSection() {
       </motion.button>
     </div>
 
-      <div className="max-w-[1600px] mx-auto pt-20">
+      <div className="max-w-[1600px] mx-auto">
 
         {/* Hero Card Container */}
         <motion.div

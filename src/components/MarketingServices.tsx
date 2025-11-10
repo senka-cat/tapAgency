@@ -1040,6 +1040,26 @@ export function MarketingServices() {
     };
   }, [emblaApi, onSelect]);
 
+  // Handle window resize to update selectedService state
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        // Mobile: close if currently open
+        if (selectedService >= 0) {
+          setSelectedService(-1);
+        }
+      } else {
+        // Desktop: open first tab if currently closed
+        if (selectedService < 0) {
+          setSelectedService(0);
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [selectedService]);
+
   const handleFlip = (index: number, flipped: boolean) => {
     setFlippedCards(prev => ({ ...prev, [index]: flipped }));
   };

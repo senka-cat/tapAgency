@@ -16,7 +16,7 @@ const translations = {
     'nav.home': 'Home',
     'nav.creative': 'Creative',
     'nav.marketing': 'Marketing',
-    'nav.insights': 'Insights',
+    'nav.insights': 'Our Work',
     'nav.contact': 'Contact',
     'nav.letsTalk': "Let's Talk",
     
@@ -168,6 +168,7 @@ const translations = {
     'footer.tagline': 'Crafting bold brands with pop-art flair and strategic precision.',
     'footer.quickLinks': 'Quick Links',
     'footer.services': 'Services',
+    'footer.company': 'Company',
     'footer.connect': 'Connect',
     'footer.allRights': 'All rights reserved.',
     
@@ -234,7 +235,7 @@ const translations = {
     'nav.home': 'Početna',
     'nav.creative': 'Kreativno',
     'nav.marketing': 'Marketing',
-    'nav.insights': 'Uvidi',
+    'nav.insights': 'Naš Rad',
     'nav.contact': 'Kontakt',
     'nav.letsTalk': 'Razgovarajmo',
     
@@ -386,6 +387,7 @@ const translations = {
     'footer.tagline': 'Kreiramo smjele brendove sa pop-art stilom i strateškom preciznošću.',
     'footer.quickLinks': 'Brze Veze',
     'footer.services': 'Usluge',
+    'footer.company': 'Kompanija',
     'footer.connect': 'Povežite Se',
     'footer.allRights': 'Sva prava zadržana.',
     

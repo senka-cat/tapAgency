@@ -1063,7 +1063,12 @@ export function CreativeServices() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [flippedCards, setFlippedCards] = useState<{ [key: number]: boolean }>({});
   // On mobile start closed, on desktop start with first card open
-  const [selectedService, setSelectedService] = useState(0);
+  const [selectedService, setSelectedService] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768 ? -1 : 0;
+    }
+    return 0;
+  });
   const [portfolioScrollPositions, setPortfolioScrollPositions] = useState<{ [key: number]: number }>({});
 
   const onSelect = useCallback(() => {
@@ -1092,6 +1097,26 @@ export function CreativeServices() {
       emblaApi.off('select', onSelect);
     };
   }, [emblaApi, onSelect]);
+
+  // Handle window resize to update selectedService state
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        // Mobile: close if currently open
+        if (selectedService >= 0) {
+          setSelectedService(-1);
+        }
+      } else {
+        // Desktop: open first tab if currently closed
+        if (selectedService < 0) {
+          setSelectedService(0);
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [selectedService]);
 
   const handleFlip = (index: number, flipped: boolean) => {
     setFlippedCards(prev => ({ ...prev, [index]: flipped }));
