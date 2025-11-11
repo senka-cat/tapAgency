@@ -497,21 +497,31 @@ function MobileCardButton({
   index: number; 
   isExpanded: boolean; 
   service: MarketingService;
-  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean) => void;
+  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean, force?: boolean) => void;
 }) {
   const Icon = service.icon;
   const touchStateRef = useRef({
     touchStartY: 0,
+    touchStartX: 0,
     touchStartTime: 0,
     touchMoved: false,
+    touchStartScrollY: 0,
   });
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    // Only handle if touch is directly on this button
+    if (e.target !== buttonRef.current && !buttonRef.current?.contains(e.target as Node)) {
+      return;
+    }
+    
     const touch = e.touches[0];
     if (touch) {
       touchStateRef.current.touchStartY = touch.clientY;
+      touchStateRef.current.touchStartX = touch.clientX;
       touchStateRef.current.touchStartTime = Date.now();
       touchStateRef.current.touchMoved = false;
+      touchStateRef.current.touchStartScrollY = window.scrollY;
     }
   };
 
@@ -519,36 +529,79 @@ function MobileCardButton({
     const touch = e.touches[0];
     if (touch && touchStateRef.current.touchStartTime > 0) {
       const deltaY = Math.abs(touch.clientY - touchStateRef.current.touchStartY);
-      if (deltaY > 10) {
+      const deltaX = Math.abs(touch.clientX - touchStateRef.current.touchStartX);
+      const scrollDelta = Math.abs(window.scrollY - touchStateRef.current.touchStartScrollY);
+      
+      // If user moved significantly or page scrolled, it's a scroll gesture
+      if (deltaY > 8 || deltaX > 8 || scrollDelta > 5) {
         touchStateRef.current.touchMoved = true;
       }
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    // Don't process if touch didn't start on this button
+    if (touchStateRef.current.touchStartTime === 0) {
+      return;
+    }
+    
     const state = touchStateRef.current;
     const touch = e.changedTouches[0];
     if (touch && state.touchStartTime > 0) {
       const timeDiff = Date.now() - state.touchStartTime;
       const deltaY = Math.abs(touch.clientY - state.touchStartY);
+      const deltaX = Math.abs(touch.clientX - state.touchStartX);
+      const scrollDelta = Math.abs(window.scrollY - state.touchStartScrollY);
       
-      // Only toggle if it was a quick tap (not a scroll)
-      if (!state.touchMoved && timeDiff < 300 && deltaY < 10) {
+      // EXTREMELY strict criteria for a tap (especially when closing):
+      // 1. No movement detected at all
+      // 2. Very quick tap (<200ms)
+      // 3. Absolutely minimal movement (<5px)
+      // 4. Page didn't scroll AT ALL during touch
+      // 5. For closing expanded cards, be even stricter
+      const isValidTap = !state.touchMoved && 
+                        timeDiff < 200 && 
+                        deltaY < 5 && 
+                        deltaX < 5 && 
+                        scrollDelta < 3;
+      
+      // Extra check: if card is expanded, require even stricter criteria
+      if (isExpanded) {
+        if (!isValidTap || scrollDelta > 0 || state.touchMoved) {
+          // Definitely a scroll, don't close
+          touchStateRef.current.touchStartTime = 0;
+          touchStateRef.current.touchMoved = false;
+          return;
+        }
+      }
+      
+      if (isValidTap) {
         e.preventDefault();
         e.stopPropagation();
-        onToggle(index, isExpanded, false);
+        // Small delay to ensure scroll detection has processed
+        setTimeout(() => {
+          onToggle(index, isExpanded, false, true);
+        }, 50);
       }
+      
+      // Reset touch state
+      touchStateRef.current.touchStartTime = 0;
+      touchStateRef.current.touchMoved = false;
     }
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onToggle(index, isExpanded, false);
+    // Only process clicks, not touch events (touch is handled separately)
+    if (e.type === 'click' && (e as any).pointerType !== 'touch') {
+      e.preventDefault();
+      e.stopPropagation();
+      onToggle(index, isExpanded, false, true);
+    }
   };
 
   return (
     <motion.button
+      ref={buttonRef}
       onClick={handleClick}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -556,6 +609,8 @@ function MobileCardButton({
       className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
       style={{
         touchAction: 'manipulation',
+        WebkitTouchCallout: 'none',
+        userSelect: 'none',
         background: isExpanded 
           ? `linear-gradient(135deg, ${service.accent}15, ${service.accent}08)`
           : 'transparent',
@@ -566,6 +621,8 @@ function MobileCardButton({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
+      // Prevent any interaction during scroll
+      whileTap={isExpanded ? {} : { scale: 0.98 }}
     >
       {/* Animated floating dots for non-expanded cards */}
       {!isExpanded && [...Array(3)].map((_, i) => (
@@ -1258,51 +1315,102 @@ export function MarketingServices() {
     isScrolling: false,
     lastScrollTime: 0,
     scrollStartY: 0,
+    isLocked: false, // Lock to prevent closing when expanded
   });
 
   useEffect(() => {
     const state = scrollStateRef.current;
     let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+    let lastScrollY = window.scrollY;
+    let scrollVelocity = 0;
+    let lastScrollTime = Date.now();
 
     const handleScroll = () => {
       const currentY = window.scrollY;
-      const scrollDelta = Math.abs(currentY - state.scrollStartY);
+      const currentTime = Date.now();
+      const timeDelta = currentTime - lastScrollTime;
+      const scrollDelta = Math.abs(currentY - lastScrollY);
       
-      if (scrollDelta > 3) {
+      // Calculate scroll velocity
+      if (timeDelta > 0) {
+        scrollVelocity = scrollDelta / timeDelta;
+      }
+      
+      if (scrollDelta > 1) {
         state.isScrolling = true;
-        state.lastScrollTime = Date.now();
-        state.scrollStartY = currentY;
+        state.lastScrollTime = currentTime;
+        lastScrollY = currentY;
+        lastScrollTime = currentTime;
+        
+        // CRITICAL: Lock cards immediately when any scrolling is detected
+        // This prevents cards from closing during scroll
+        if (selectedService >= 0) {
+          state.isLocked = true;
+        }
       }
 
+      // Clear any existing timeout
       if (scrollTimeout) clearTimeout(scrollTimeout);
+      
+      // Wait longer before considering scroll stopped (accounts for momentum scrolling)
       scrollTimeout = setTimeout(() => {
-        state.isScrolling = false;
-      }, 200);
+        // Only unlock if scroll has truly stopped and velocity is low
+        if (scrollVelocity < 0.1) {
+          state.isScrolling = false;
+          // Keep lock for extra time after scroll stops (800ms total)
+          setTimeout(() => {
+            // Only unlock if card is still expanded (don't unlock if user explicitly closed it)
+            if (selectedService >= 0) {
+              state.isLocked = false;
+            }
+          }, 800);
+        }
+        scrollVelocity = 0;
+      }, 400);
     };
 
     state.scrollStartY = window.scrollY;
+    lastScrollY = window.scrollY;
     window.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
       if (scrollTimeout) clearTimeout(scrollTimeout);
     };
-  }, []);
+  }, [selectedService]);
 
   // Safe handler for card toggle that checks scroll state
-  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false) => {
+  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false, force: boolean = false) => {
     const state = scrollStateRef.current;
     const timeSinceScroll = Date.now() - state.lastScrollTime;
     
-    // Don't toggle if:
-    // 1. Currently scrolling
-    // 2. Recently scrolled (within 400ms)
-    // 3. Touch moved (user was scrolling, not tapping)
-    if (state.isScrolling || timeSinceScroll < 400 || touchMoved) {
-      return;
+    // CRITICAL RULE: If trying to close an expanded card, check multiple conditions
+    if (isExpanded) {
+      // Never close if:
+      // 1. Card is locked (scrolling detected)
+      // 2. Currently scrolling
+      // 3. Scrolled recently (within 1000ms) - very long cooldown
+      // 4. Touch moved (scroll gesture detected)
+      // Unless explicitly forced with a valid tap
+      if (!force && (state.isLocked || state.isScrolling || timeSinceScroll < 1000 || touchMoved)) {
+        return;
+      }
     }
     
+    // For opening cards, be less strict but still check for scrolling
+    if (!isExpanded && !force) {
+      if (state.isScrolling || timeSinceScroll < 300 || touchMoved) {
+        return;
+      }
+    }
+    
+    // Only allow toggle if all checks pass
     setSelectedService(isExpanded ? -1 : index);
+    
+    // Reset lock when explicitly closing (user tapped to close)
+    if (isExpanded && force) {
+      state.isLocked = false;
+    }
   }, []);
 
   return (

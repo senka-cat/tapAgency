@@ -385,9 +385,44 @@ function MobileWorkCardButton({
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             className="overflow-hidden"
-            style={{ minHeight: '500px' }}
+            style={{ 
+              minHeight: '500px',
+              // Prevent any scroll behavior that could cause snapping
+              scrollMargin: 0,
+              scrollPadding: 0,
+            }}
+            onAnimationStart={() => {
+              // Prevent scrolling to the expanded card and any snapping behavior
+              if (typeof window !== 'undefined') {
+                const currentScrollY = window.scrollY;
+                // Lock scroll position during animation to prevent any jumping/snapping
+                const lockScroll = () => {
+                  if (Math.abs(window.scrollY - currentScrollY) > 5) {
+                    window.scrollTo({ top: currentScrollY, behavior: 'auto' });
+                  }
+                };
+                
+                // Monitor and prevent scroll changes during expansion
+                const scrollLockInterval = setInterval(lockScroll, 16); // ~60fps
+                
+                // Clear after animation completes (300ms + buffer)
+                setTimeout(() => {
+                  clearInterval(scrollLockInterval);
+                }, 400);
+              }
+            }}
           >
-            <div className="pt-4 pb-2 px-2" style={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
+            <div 
+              className="pt-4 pb-2 px-2" 
+              style={{ 
+                height: '500px', 
+                display: 'flex', 
+                flexDirection: 'column',
+                // Prevent scroll snapping
+                scrollSnapAlign: 'none',
+                scrollSnapStop: 'normal',
+              }}
+            >
               <WorkGalleryPanel work={work} />
             </div>
           </motion.div>
@@ -642,8 +677,11 @@ function WorkGalleryPanel({ work }: { work: WorkPost }) {
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorX: 'contain',
+              overscrollBehaviorY: 'contain',
               // Disable scroll snap on mobile to prevent unwanted snapping during card expansion
               scrollSnapType: isMobile ? 'none' : 'x mandatory',
+              // Prevent any scroll-related snapping or jumping
+              scrollBehavior: 'auto',
             }}
             onScroll={(e: UIEvent<HTMLDivElement>) => {
               const target = e.target as HTMLDivElement;
@@ -955,6 +993,17 @@ export function OurWorkSection() {
     return 0;
   });
 
+  // Safe setter that prevents closing tabs on desktop
+  const setSelectedWorkSafe = useCallback((value: number) => {
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      // Desktop: Never allow -1, always keep at least one tab open
+      if (value < 0) {
+        return; // Don't allow closing on desktop
+      }
+    }
+    setSelectedWork(value);
+  }, []);
+
   // Track scroll state to prevent card toggles during scroll
   const scrollStateRef = useRef({
     isScrolling: false,
@@ -995,26 +1044,34 @@ export function OurWorkSection() {
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 768) {
-        // Mobile: close if currently open
-        if (selectedWork >= 0) {
-          setSelectedWork(-1);
-        }
+        // Mobile: allow closing (can be -1)
+        // No action needed, mobile can have no tabs open
       } else {
-        // Desktop: open first tab if currently closed
+        // Desktop: ALWAYS keep one tab open, never allow all to be closed
         if (selectedWork < 0) {
-          setSelectedWork(0);
+          setSelectedWorkSafe(0);
         }
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [selectedWork]);
+  }, [selectedWork, setSelectedWorkSafe]);
+
+  // Ensure desktop always has a tab selected (safety check)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      if (selectedWork < 0 || selectedWork >= workPosts.length) {
+        setSelectedWorkSafe(0);
+      }
+    }
+  }, [selectedWork, workPosts.length, setSelectedWorkSafe]);
 
   // Safe handler for card toggle that checks scroll state
   const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false) => {
     const state = scrollStateRef.current;
     const timeSinceScroll = Date.now() - state.lastScrollTime;
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
     
     // Don't toggle if:
     // 1. Currently scrolling
@@ -1024,8 +1081,20 @@ export function OurWorkSection() {
       return;
     }
     
-    setSelectedWork(isExpanded ? -1 : index);
-  }, []);
+    // Desktop: Only allow switching, never closing
+    if (isDesktop) {
+      if (isExpanded) {
+        // Can't close on desktop, do nothing
+        return;
+      } else {
+        // Switching to a different tab
+        setSelectedWorkSafe(index);
+      }
+    } else {
+      // Mobile: Allow opening/closing
+      setSelectedWorkSafe(isExpanded ? -1 : index);
+    }
+  }, [setSelectedWorkSafe]);
 
   return (
     <section id="blog" className="relative py-16 md:py-24 bg-[#0A0A0A]">
@@ -1084,11 +1153,13 @@ export function OurWorkSection() {
                 work={work}
                 isActive={selectedWork === index}
                 onClick={() => {
-                  if (selectedWork === index) {
-                    setSelectedWork(-1);
-                  } else {
-                    setSelectedWork(index);
+                  // Desktop: Only allow switching, never closing
+                  // If clicking the active tab, do nothing (can't close)
+                  // If clicking a different tab, switch to it
+                  if (selectedWork !== index) {
+                    setSelectedWorkSafe(index);
                   }
+                  // If clicking the same tab, do nothing (prevent closing)
                 }}
               />
             ))}
