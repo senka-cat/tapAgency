@@ -608,7 +608,8 @@ function MobileCardButton({
       onTouchEnd={handleTouchEnd}
       className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
       style={{
-        touchAction: 'manipulation',
+        // Allow pan-y for vertical scrolling when card is expanded
+        touchAction: isExpanded ? 'pan-y' : 'manipulation',
         WebkitTouchCallout: 'none',
         userSelect: 'none',
         background: isExpanded 
@@ -1310,107 +1311,26 @@ export function MarketingServices() {
     setFlippedCards(prev => ({ ...prev, [index]: flipped }));
   };
 
-  // Track scroll state to prevent card toggles during scroll
-  const scrollStateRef = useRef({
-    isScrolling: false,
-    lastScrollTime: 0,
-    scrollStartY: 0,
-    isLocked: false, // Lock to prevent closing when expanded
-  });
-
-  useEffect(() => {
-    const state = scrollStateRef.current;
-    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
-    let lastScrollY = window.scrollY;
-    let scrollVelocity = 0;
-    let lastScrollTime = Date.now();
-
-    const handleScroll = () => {
-      const currentY = window.scrollY;
-      const currentTime = Date.now();
-      const timeDelta = currentTime - lastScrollTime;
-      const scrollDelta = Math.abs(currentY - lastScrollY);
-      
-      // Calculate scroll velocity
-      if (timeDelta > 0) {
-        scrollVelocity = scrollDelta / timeDelta;
-      }
-      
-      if (scrollDelta > 1) {
-        state.isScrolling = true;
-        state.lastScrollTime = currentTime;
-        lastScrollY = currentY;
-        lastScrollTime = currentTime;
-        
-        // CRITICAL: Lock cards immediately when any scrolling is detected
-        // This prevents cards from closing during scroll
-        if (selectedService >= 0) {
-          state.isLocked = true;
-        }
-      }
-
-      // Clear any existing timeout
-      if (scrollTimeout) clearTimeout(scrollTimeout);
-      
-      // Wait longer before considering scroll stopped (accounts for momentum scrolling)
-      scrollTimeout = setTimeout(() => {
-        // Only unlock if scroll has truly stopped and velocity is low
-        if (scrollVelocity < 0.1) {
-          state.isScrolling = false;
-          // Keep lock for extra time after scroll stops (800ms total)
-          setTimeout(() => {
-            // Only unlock if card is still expanded (don't unlock if user explicitly closed it)
-            if (selectedService >= 0) {
-              state.isLocked = false;
-            }
-          }, 800);
-        }
-        scrollVelocity = 0;
-      }, 400);
-    };
-
-    state.scrollStartY = window.scrollY;
-    lastScrollY = window.scrollY;
-    window.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (scrollTimeout) clearTimeout(scrollTimeout);
-    };
-  }, [selectedService]);
+  // Removed scroll-based card closing prevention
+  // Cards will only close on explicit user tap, not when scrolling between sections
 
   // Safe handler for card toggle that checks scroll state
   const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false, force: boolean = false) => {
-    const state = scrollStateRef.current;
-    const timeSinceScroll = Date.now() - state.lastScrollTime;
-    
-    // CRITICAL RULE: If trying to close an expanded card, check multiple conditions
-    if (isExpanded) {
-      // Never close if:
-      // 1. Card is locked (scrolling detected)
-      // 2. Currently scrolling
-      // 3. Scrolled recently (within 1000ms) - very long cooldown
-      // 4. Touch moved (scroll gesture detected)
-      // Unless explicitly forced with a valid tap
-      if (!force && (state.isLocked || state.isScrolling || timeSinceScroll < 1000 || touchMoved)) {
-        return;
-      }
-    }
-    
-    // For opening cards, be less strict but still check for scrolling
-    if (!isExpanded && !force) {
-      if (state.isScrolling || timeSinceScroll < 300 || touchMoved) {
+    // CRITICAL: On mobile, only prevent toggle if touch moved on the button itself
+    // Don't prevent toggle just because user scrolled the page - only prevent if touch moved on the button
+    // This allows cards to stay open when scrolling between sections
+    if (!force) {
+      // Only prevent if touch moved on the button (scroll gesture on button)
+      // Allow toggle even if page was scrolled, as long as the button wasn't scrolled on
+      if (touchMoved) {
+        // Touch moved on button = scroll gesture, don't toggle
         return;
       }
     }
     
     // Only allow toggle if all checks pass
+    // Cards will only close on explicit tap, not when scrolling between sections
     setSelectedService(isExpanded ? -1 : index);
-    
-    // Reset lock when explicitly closing (user tapped to close)
-    if (isExpanded && force) {
-      state.isLocked = false;
-    }
   }, []);
 
   return (
@@ -1474,9 +1394,21 @@ export function MarketingServices() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="overflow-hidden"
+                      className="overflow-visible"
+                      style={{
+                        // Enable touch scrolling on Android
+                        touchAction: 'pan-y',
+                        WebkitOverflowScrolling: 'touch',
+                        pointerEvents: 'auto',
+                      }}
                     >
-                      <div className="pt-4 pb-2 space-y-4">
+                      <div 
+                        className="pt-4 pb-2 space-y-4"
+                        style={{
+                          touchAction: 'pan-y',
+                          pointerEvents: 'auto',
+                        }}
+                      >
                         {/* Tags */}
                         <div className="flex flex-wrap gap-2 px-2">
                           {service.tags.map((tag, i) => (

@@ -233,7 +233,7 @@ function MobileWorkCardButton({
   work: WorkPost;
   index: number;
   isExpanded: boolean;
-  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean) => void;
+  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean, force?: boolean) => void;
 }) {
   const Icon = work.icon;
   const touchStateRef = useRef({
@@ -268,19 +268,24 @@ function MobileWorkCardButton({
       const timeDiff = Date.now() - state.touchStartTime;
       const deltaY = Math.abs(touch.clientY - state.touchStartY);
       
-      // Only toggle if it was a quick tap (not a scroll)
+      // Only toggle if it was a quick tap (not a scroll on the button itself)
+      // Allow toggle even if page scrolled, as long as finger didn't move on button
       if (!state.touchMoved && timeDiff < 300 && deltaY < 10) {
         e.preventDefault();
         e.stopPropagation();
-        onToggle(index, isExpanded, false);
+        // Force toggle since it's a valid tap
+        onToggle(index, isExpanded, false, true);
       }
     }
+    // Reset touch state
+    touchStateRef.current.touchStartTime = 0;
+    touchStateRef.current.touchMoved = false;
   };
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onToggle(index, isExpanded, false);
+    onToggle(index, isExpanded, false, true);
   };
 
   return (
@@ -293,7 +298,8 @@ function MobileWorkCardButton({
         onTouchEnd={handleTouchEnd}
         className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
         style={{
-          touchAction: 'manipulation',
+          // Allow pan-y for vertical scrolling when card is expanded
+          touchAction: isExpanded ? 'pan-y' : 'manipulation',
           background: isExpanded 
             ? `linear-gradient(135deg, ${work.accent}15, ${work.accent}08)`
             : 'transparent',
@@ -384,32 +390,12 @@ function MobileWorkCardButton({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="overflow-hidden"
+            className="overflow-visible"
             style={{ 
               minHeight: '500px',
               // Prevent any scroll behavior that could cause snapping
               scrollMargin: 0,
               scrollPadding: 0,
-            }}
-            onAnimationStart={() => {
-              // Prevent scrolling to the expanded card and any snapping behavior
-              if (typeof window !== 'undefined') {
-                const currentScrollY = window.scrollY;
-                // Lock scroll position during animation to prevent any jumping/snapping
-                const lockScroll = () => {
-                  if (Math.abs(window.scrollY - currentScrollY) > 5) {
-                    window.scrollTo({ top: currentScrollY, behavior: 'auto' });
-                  }
-                };
-                
-                // Monitor and prevent scroll changes during expansion
-                const scrollLockInterval = setInterval(lockScroll, 16); // ~60fps
-                
-                // Clear after animation completes (300ms + buffer)
-                setTimeout(() => {
-                  clearInterval(scrollLockInterval);
-                }, 400);
-              }
             }}
           >
             <div 
@@ -421,6 +407,8 @@ function MobileWorkCardButton({
                 // Prevent scroll snapping
                 scrollSnapAlign: 'none',
                 scrollSnapStop: 'normal',
+                // Ensure pointer events work and allow touch
+                pointerEvents: 'auto',
               }}
             >
               <WorkGalleryPanel work={work} />
@@ -675,13 +663,17 @@ function WorkGalleryPanel({ work }: { work: WorkPost }) {
             ref={containerRef}
             className="absolute inset-0 flex gap-3 md:gap-4 overflow-x-auto pb-2 scrollbar-hide"
             style={{
+              // CRITICAL: Enable touch scrolling on Android
+              touchAction: 'pan-x pan-y',
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorX: 'contain',
-              overscrollBehaviorY: 'contain',
+              overscrollBehaviorY: 'auto',
               // Disable scroll snap on mobile to prevent unwanted snapping during card expansion
               scrollSnapType: isMobile ? 'none' : 'x mandatory',
               // Prevent any scroll-related snapping or jumping
               scrollBehavior: 'auto',
+              // Ensure pointer events work
+              pointerEvents: 'auto',
             }}
             onScroll={(e: UIEvent<HTMLDivElement>) => {
               const target = e.target as HTMLDivElement;
@@ -1004,41 +996,17 @@ export function OurWorkSection() {
     setSelectedWork(value);
   }, []);
 
-  // Track scroll state to prevent card toggles during scroll
+  // Track scroll state - but don't use it to prevent card toggles
+  // Cards should only close on explicit tap, not based on scroll position
+  // This ref is kept for potential future use but not blocking toggles
   const scrollStateRef = useRef({
     isScrolling: false,
     lastScrollTime: 0,
     scrollStartY: 0,
   });
 
-  useEffect(() => {
-    const state = scrollStateRef.current;
-    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const handleScroll = () => {
-      const currentY = window.scrollY;
-      const scrollDelta = Math.abs(currentY - state.scrollStartY);
-      
-      if (scrollDelta > 3) {
-        state.isScrolling = true;
-        state.lastScrollTime = Date.now();
-        state.scrollStartY = currentY;
-      }
-
-      if (scrollTimeout) clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        state.isScrolling = false;
-      }, 200);
-    };
-
-    state.scrollStartY = window.scrollY;
-    window.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (scrollTimeout) clearTimeout(scrollTimeout);
-    };
-  }, []);
+  // Removed scroll-based card closing prevention
+  // Cards will only close on explicit user tap, not when scrolling between sections
 
   // Handle window resize to update selectedWork state
   useEffect(() => {
@@ -1068,17 +1036,20 @@ export function OurWorkSection() {
   }, [selectedWork, workPosts.length, setSelectedWorkSafe]);
 
   // Safe handler for card toggle that checks scroll state
-  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false) => {
+  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false, force: boolean = false) => {
     const state = scrollStateRef.current;
     const timeSinceScroll = Date.now() - state.lastScrollTime;
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
     
-    // Don't toggle if:
-    // 1. Currently scrolling
-    // 2. Recently scrolled (within 400ms)
-    // 3. Touch moved (user was scrolling, not tapping)
-    if (state.isScrolling || timeSinceScroll < 400 || touchMoved) {
-      return;
+    // CRITICAL: On mobile, only prevent toggle if it's clearly a scroll gesture
+    // Don't prevent toggle just because user scrolled the page - only prevent if touch moved on the button
+    if (!force && !isDesktop) {
+      // Mobile: Only prevent if touch moved on the button itself (scroll gesture on button)
+      // Allow toggle even if page was scrolled, as long as the button wasn't scrolled on
+      if (touchMoved) {
+        // Touch moved on button = scroll gesture, don't toggle
+        return;
+      }
     }
     
     // Desktop: Only allow switching, never closing
@@ -1091,7 +1062,8 @@ export function OurWorkSection() {
         setSelectedWorkSafe(index);
       }
     } else {
-      // Mobile: Allow opening/closing
+      // Mobile: Allow opening/closing - only close on explicit tap (force=true or no scroll on button)
+      // This allows cards to stay open when scrolling between sections
       setSelectedWorkSafe(isExpanded ? -1 : index);
     }
   }, [setSelectedWorkSafe]);
@@ -1137,7 +1109,7 @@ export function OurWorkSection() {
                 work={work}
                 index={index}
                 isExpanded={isExpanded}
-                onToggle={handleCardToggle}
+                onToggle={(idx, expanded, moved, force) => handleCardToggle(idx, expanded, moved, force)}
               />
             );
           })}
