@@ -20,7 +20,17 @@ export function DesktopNav() {
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             whileTap={{ scale: 0.95 }}
           >
-            <div className="h-6 w-[120px] flex-shrink-0">
+            <div 
+              className="h-6 w-[120px] flex-shrink-0"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                maxWidth: '120px',
+                maxHeight: '24px',
+                overflow: 'hidden'
+              }}
+            >
               <Logo />
             </div>
           </motion.div>

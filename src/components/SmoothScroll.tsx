@@ -9,9 +9,37 @@ export function SmoothScroll() {
   useEffect(() => {
     let isScrolling = false;
     let rafId: number | null = null;
+    let isUserScrolling = false;
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    // Store original scroll functions before overriding
+    const originalScrollTo = window.scrollTo;
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+    // Detect if user is actively scrolling (touch/mouse wheel)
+    const handleUserScrollStart = () => {
+      isUserScrolling = true;
+      // Cancel any programmatic smooth scroll if user starts scrolling
+      if (isScrolling && rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        isScrolling = false;
+      }
+      // Clear the flag after user stops scrolling
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        isUserScrolling = false;
+      }, 150);
+    };
 
     // Enhanced smooth scroll function with custom easing
     function smoothScrollTo(target: number, duration: number = 1200) {
+      // Don't interrupt if user is actively scrolling on mobile
+      const isMobile = window.innerWidth < 768;
+      if (isMobile && isUserScrolling) {
+        return;
+      }
+
       if (isScrolling && rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -24,11 +52,22 @@ export function SmoothScroll() {
       const startTime = performance.now();
 
       function scroll(currentTime: number) {
+        // Stop if user starts scrolling
+        if (isUserScrolling && window.innerWidth < 768) {
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+          }
+          rafId = null;
+          isScrolling = false;
+          return;
+        }
+
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
         const eased = easeInOutCubic(progress);
         const nextPosition = startY + distance * eased;
         
+        // Use the original scrollTo for programmatic scrolling within our smooth scroll
         originalScrollTo.call(window, 0, nextPosition);
 
         if (progress < 1) {
@@ -88,37 +127,53 @@ export function SmoothScroll() {
       }
     };
 
-    // Intercept scrollIntoView calls
-    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    // Intercept scrollIntoView calls - only for smooth behavior
     Element.prototype.scrollIntoView = function(arg?: boolean | ScrollIntoViewOptions) {
-      const rect = this.getBoundingClientRect();
-      const scrollTop = window.scrollY || document.documentElement.scrollTop;
-      const targetPosition = rect.top + scrollTop - 100;
-      
-      smoothScrollTo(targetPosition, 1400);
+      // Only intercept if smooth behavior is explicitly requested
+      if (typeof arg === 'object' && arg?.behavior === 'smooth') {
+        const rect = this.getBoundingClientRect();
+        const scrollTop = window.scrollY || document.documentElement.scrollTop;
+        const targetPosition = rect.top + scrollTop - 100;
+        smoothScrollTo(targetPosition, 1400);
+      } else {
+        // Use native implementation for instant scrolls or default behavior
+        originalScrollIntoView.call(this, arg);
+      }
     };
 
-    // Intercept window.scrollTo calls
-    const originalScrollTo = window.scrollTo;
+    // Intercept window.scrollTo calls - only for smooth behavior
     window.scrollTo = function(x: number | ScrollToOptions, y?: number) {
+      // Only intercept smooth scrolls, let instant scrolls use native behavior
       if (typeof x === 'object' && x !== null) {
         const options = x as ScrollToOptions;
         if (options.behavior === 'smooth') {
-          const targetY = options.top || 0;
+          const targetY = options.top ?? window.scrollY;
           smoothScrollTo(targetY, 1400);
           return;
         }
-      } else if (typeof x === 'number' && typeof y === 'number') {
-        smoothScrollTo(y, 1200);
-        return;
       }
+      // For number arguments, use native (instant) scroll - don't intercept
+      // This allows native touch scrolling to work properly
       originalScrollTo.call(window, x, y);
     };
+
+    // Listen for user scroll events to detect active scrolling
+    const handleScroll = () => {
+      handleUserScrollStart();
+    };
+
+    // Use wheel and touch events to detect user-initiated scrolling
+    window.addEventListener('wheel', handleUserScrollStart, { passive: true });
+    window.addEventListener('touchmove', handleUserScrollStart, { passive: true });
+    window.addEventListener('scroll', handleScroll, { passive: true });
 
     document.addEventListener('click', handleAnchorClick);
     document.addEventListener('click', handleButtonClick);
 
     return () => {
+      window.removeEventListener('wheel', handleUserScrollStart);
+      window.removeEventListener('touchmove', handleUserScrollStart);
+      window.removeEventListener('scroll', handleScroll);
       document.removeEventListener('click', handleAnchorClick);
       document.removeEventListener('click', handleButtonClick);
       
@@ -128,6 +183,9 @@ export function SmoothScroll() {
       
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
+      }
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
       }
     };
   }, []);

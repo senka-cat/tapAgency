@@ -2,8 +2,29 @@ import svgPaths from "./svg-ng3jjmgg1s";
 
 export default function Logo() {
   return (
-    <div className="relative size-full" data-name="logo">
-      <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 149 32">
+    <div 
+      className="relative w-full h-full" 
+      data-name="logo"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        width: '100%',
+        height: '100%'
+      }}
+    >
+      <svg 
+        className="block" 
+        fill="none" 
+        preserveAspectRatio="xMidYMid meet" 
+        viewBox="0 0 149 32"
+        style={{
+          width: '100%',
+          height: '100%',
+          maxWidth: '100%',
+          maxHeight: '100%'
+        }}
+      >
         <g clipPath="url(#clip0_55_299)" id="logo">
           <path d={svgPaths.p21198a80} fill="var(--fill-0, #ECE7E1)" id="Vector" />
           <path d={svgPaths.pb7fc600} fill="var(--fill-0, #ECE7E1)" id="Vector_2" />
