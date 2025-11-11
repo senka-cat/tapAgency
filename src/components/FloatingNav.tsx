@@ -86,67 +86,164 @@ export function FloatingNav() {
   };
 
   useEffect(() => {
+    // Track scroll state to prevent closing during scroll
+    let scrollStartY = window.scrollY;
+    let isCurrentlyScrolling = false;
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+    let lastScrollTime = 0;
+
     // Track touch positions to distinguish between taps and scrolls
     let touchStartY = 0;
     let touchStartX = 0;
     let touchStartTime = 0;
-    let isScrolling = false;
+    let touchMoved = false;
+    let activeTouchId: number | null = null;
+
+    // Detect when scrolling starts
+    const handleScrollStart = () => {
+      isCurrentlyScrolling = true;
+      lastScrollTime = Date.now();
+      
+      // Clear any pending close actions
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = null;
+      }
+    };
+
+    // Detect when scrolling stops
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      const scrollDelta = Math.abs(currentScrollY - scrollStartY);
+      
+      if (scrollDelta > 2) {
+        // User is actively scrolling
+        isCurrentlyScrolling = true;
+        lastScrollTime = Date.now();
+        scrollStartY = currentScrollY;
+      }
+
+      // Clear timeout and set new one
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        // Scrolling has stopped for 150ms
+        isCurrentlyScrolling = false;
+      }, 150);
+    };
 
     const handleTouchStart = (event: TouchEvent) => {
       const touch = event.touches[0];
-      if (touch && navRef.current && !navRef.current.contains(event.target as Node)) {
-        touchStartY = touch.clientY;
-        touchStartX = touch.clientX;
-        touchStartTime = Date.now();
-        isScrolling = false;
+      if (touch) {
+        // Only track if touch is outside the nav menu
+        if (navRef.current && !navRef.current.contains(event.target as Node)) {
+          touchStartY = touch.clientY;
+          touchStartX = touch.clientX;
+          touchStartTime = Date.now();
+          touchMoved = false;
+          activeTouchId = touch.identifier;
+        }
       }
     };
 
     const handleTouchMove = (event: TouchEvent) => {
-      // If user moves finger significantly, they're scrolling, not tapping
-      if (touchStartTime > 0) {
-        const touch = event.touches[0];
+      // Check if this is our tracked touch
+      if (activeTouchId !== null) {
+        const touch = Array.from(event.touches).find(t => t.identifier === activeTouchId);
         if (touch) {
           const deltaY = Math.abs(touch.clientY - touchStartY);
           const deltaX = Math.abs(touch.clientX - touchStartX);
-          if (deltaY > 5 || deltaX > 5) {
-            isScrolling = true;
+          
+          // If moved more than 10px, consider it a scroll
+          if (deltaY > 10 || deltaX > 10) {
+            touchMoved = true;
           }
         }
       }
     };
 
     const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      // For touch events, only close if it was a tap (not a scroll)
+      // CRITICAL: Never close if currently scrolling or recently scrolled
+      const timeSinceScroll = Date.now() - lastScrollTime;
+      if (isCurrentlyScrolling || timeSinceScroll < 300) {
+        return;
+      }
+
+      // For touch events, be extremely strict - only close on clear taps
       if (event instanceof TouchEvent) {
+        // If we detected any movement, it's a scroll, not a tap
+        if (touchMoved) {
+          touchStartTime = 0;
+          touchMoved = false;
+          activeTouchId = null;
+          return;
+        }
+
         const touch = event.changedTouches[0];
         if (touch && touchStartTime > 0) {
           const timeDiff = Date.now() - touchStartTime;
           const deltaY = Math.abs(touch.clientY - touchStartY);
           const deltaX = Math.abs(touch.clientX - touchStartX);
           
-          // If it was a scroll gesture or took too long, don't close
-          if (isScrolling || timeDiff > 300 || deltaY > 10 || deltaX > 10) {
+          // Extremely strict criteria for a tap:
+          // 1. Must be very quick (less than 200ms)
+          // 2. Must not have moved at all (less than 5px)
+          // 3. Must not have been flagged as moved
+          if (timeDiff > 200 || deltaY > 5 || deltaX > 5) {
+            // This was a scroll gesture, don't close
             touchStartTime = 0;
+            touchMoved = false;
+            activeTouchId = null;
             return;
           }
+        } else {
+          // No valid touch start was tracked, don't close
+          return;
         }
+        
+        // Reset touch tracking after processing
         touchStartTime = 0;
+        touchMoved = false;
+        activeTouchId = null;
       }
 
-      // Only close if click/tap was outside the nav element
+      // Only close if:
+      // 1. Click/tap was outside the nav element
+      // 2. We're definitely not scrolling
+      // 3. Enough time has passed since last scroll
       if (navRef.current && !navRef.current.contains(event.target as Node)) {
-        setIsExpanded(false);
+        if (!isCurrentlyScrolling && timeSinceScroll > 300) {
+          setIsExpanded(false);
+        }
       }
     };
 
+    // Separate handler for overlay tap (more permissive since it's explicit)
+    const handleOverlayTap = (event: TouchEvent) => {
+      // Allow closing on overlay tap, but still check for scroll
+      if (isCurrentlyScrolling || (Date.now() - lastScrollTime) < 150) {
+        event.preventDefault();
+        return;
+      }
+      setIsExpanded(false);
+    };
+
     if (isExpanded) {
-      // Support both mouse and touch events for better mobile compatibility
+      // Track scroll state
+      scrollStartY = window.scrollY;
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      window.addEventListener('touchmove', handleScrollStart, { passive: true });
+      
+      // Handle click outside (mouse)
       document.addEventListener('mousedown', handleClickOutside);
+      
+      // Handle touch events
       document.addEventListener('touchstart', handleTouchStart, { passive: true });
       document.addEventListener('touchmove', handleTouchMove, { passive: true });
       document.addEventListener('touchend', handleClickOutside, { passive: true });
     } else {
+      // Clean up all listeners
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('touchmove', handleScrollStart);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleTouchStart);
       document.removeEventListener('touchmove', handleTouchMove);
@@ -154,10 +251,16 @@ export function FloatingNav() {
     }
 
     return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('touchmove', handleScrollStart);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleTouchStart);
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleClickOutside);
+      
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
     };
   }, [isExpanded]);
 
@@ -177,10 +280,17 @@ export function FloatingNav() {
                     animate={{ opacity: 0.4 }}
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[80] md:hidden"
-                    onClick={() => setIsExpanded(false)}
+                    onMouseDown={(e) => {
+                      // Close on mouse down (desktop)
+                      e.preventDefault();
+                      setIsExpanded(false);
+                    }}
                     style={{ 
-                      touchAction: 'none',
-                      pointerEvents: 'auto'
+                      touchAction: 'pan-y',
+                      pointerEvents: 'auto',
+                      WebkitTouchCallout: 'none',
+                      // Allow scrolling through overlay
+                      overscrollBehavior: 'contain'
                     }}
                   />
                 )}

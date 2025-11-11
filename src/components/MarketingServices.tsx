@@ -487,6 +487,195 @@ function ServiceCard({ service, index, isMobile, isFlipped, onFlip }: {
   );
 }
 
+// Mobile card button component with scroll detection
+function MobileCardButton({ 
+  index, 
+  isExpanded, 
+  service, 
+  onToggle 
+}: { 
+  index: number; 
+  isExpanded: boolean; 
+  service: MarketingService;
+  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean) => void;
+}) {
+  const Icon = service.icon;
+  const touchStateRef = useRef({
+    touchStartY: 0,
+    touchStartTime: 0,
+    touchMoved: false,
+  });
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch) {
+      touchStateRef.current.touchStartY = touch.clientY;
+      touchStateRef.current.touchStartTime = Date.now();
+      touchStateRef.current.touchMoved = false;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch && touchStateRef.current.touchStartTime > 0) {
+      const deltaY = Math.abs(touch.clientY - touchStateRef.current.touchStartY);
+      if (deltaY > 10) {
+        touchStateRef.current.touchMoved = true;
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const state = touchStateRef.current;
+    const touch = e.changedTouches[0];
+    if (touch && state.touchStartTime > 0) {
+      const timeDiff = Date.now() - state.touchStartTime;
+      const deltaY = Math.abs(touch.clientY - state.touchStartY);
+      
+      // Only toggle if it was a quick tap (not a scroll)
+      if (!state.touchMoved && timeDiff < 300 && deltaY < 10) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle(index, isExpanded, false);
+      }
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggle(index, isExpanded, false);
+  };
+
+  return (
+    <motion.button
+      onClick={handleClick}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
+      style={{
+        touchAction: 'manipulation',
+        background: isExpanded 
+          ? `linear-gradient(135deg, ${service.accent}15, ${service.accent}08)`
+          : 'transparent',
+        borderWidth: '2px',
+        borderStyle: 'solid',
+        borderColor: isExpanded ? service.accent : `${service.accent}30`,
+      }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.1 }}
+    >
+      {/* Animated floating dots for non-expanded cards */}
+      {!isExpanded && [...Array(3)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute w-1.5 h-1.5 rounded-full opacity-20 pointer-events-none"
+          style={{
+            backgroundColor: service.accent,
+            top: `${30 + i * 20}%`,
+            right: `${10 + (i % 2) * 5}%`,
+          }}
+          animate={{
+            y: [0, -12, 0],
+            x: [0, 6, 0],
+            scale: [1, 1.2, 1],
+            opacity: [0.2, 0.4, 0.2],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            delay: i * 0.5,
+            ease: "easeInOut"
+          }}
+        />
+      ))}
+      
+      {/* Subtle orbital dots for expanded cards - always visible */}
+      {isExpanded && [...Array(5)].map((_, i) => {
+        const angle = (i * 360 / 5);
+        const radius = 35;
+        return (
+          <motion.div
+            key={`orbital-${i}`}
+            className="absolute w-1.5 h-1.5 rounded-full opacity-20 pointer-events-none"
+            style={{
+              backgroundColor: service.accent,
+              left: '50%',
+              top: '50%',
+            }}
+            animate={{
+              x: [
+                Math.cos((angle) * Math.PI / 180) * radius,
+                Math.cos((angle + 120) * Math.PI / 180) * radius,
+                Math.cos((angle + 240) * Math.PI / 180) * radius,
+                Math.cos((angle + 360) * Math.PI / 180) * radius,
+              ],
+              y: [
+                Math.sin((angle) * Math.PI / 180) * radius,
+                Math.sin((angle + 120) * Math.PI / 180) * radius,
+                Math.sin((angle + 240) * Math.PI / 180) * radius,
+                Math.sin((angle + 360) * Math.PI / 180) * radius,
+              ],
+            }}
+            transition={{
+              duration: 8,
+              repeat: Infinity,
+              delay: i * 0.4,
+              ease: "linear"
+            }}
+          />
+        );
+      })}
+      
+      <div className="relative z-10 flex items-center gap-3">
+        {/* Icon */}
+        <div 
+          className="p-2.5 rounded-lg flex-shrink-0 transition-all duration-300"
+          style={{
+            backgroundColor: isExpanded ? `${service.accent}30` : `${service.accent}15`,
+            boxShadow: isExpanded ? `0 0 20px ${service.accent}40` : 'none',
+          }}
+        >
+          <Icon 
+            className="w-5 h-5" 
+            style={{ color: service.accent }} 
+            strokeWidth={1.5} 
+          />
+        </div>
+        
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <h3 
+            className="font-['Josefin_Sans'] text-lg mb-0.5 transition-colors duration-300"
+            style={{ color: isExpanded ? service.accent : '#ECE7E1' }}
+          >
+            {service.title}
+          </h3>
+          <p className="font-['Lato'] text-[#ECE7E1]/60 text-xs line-clamp-1">
+            {service.description}
+          </p>
+        </div>
+        
+        {/* Arrow indicator */}
+        <motion.div
+          animate={{ rotate: isExpanded ? 90 : 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <ChevronRight 
+            className="w-5 h-5 flex-shrink-0 transition-all duration-300" 
+            style={{ 
+              color: service.accent,
+              opacity: isExpanded ? 1 : 0.5,
+            }} 
+          />
+        </motion.div>
+      </div>
+    </motion.button>
+  );
+}
+
 // Desktop compact card component
 type CompactServiceCardProps = {
   service: MarketingService;
@@ -1064,6 +1253,58 @@ export function MarketingServices() {
     setFlippedCards(prev => ({ ...prev, [index]: flipped }));
   };
 
+  // Track scroll state to prevent card toggles during scroll
+  const scrollStateRef = useRef({
+    isScrolling: false,
+    lastScrollTime: 0,
+    scrollStartY: 0,
+  });
+
+  useEffect(() => {
+    const state = scrollStateRef.current;
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const handleScroll = () => {
+      const currentY = window.scrollY;
+      const scrollDelta = Math.abs(currentY - state.scrollStartY);
+      
+      if (scrollDelta > 3) {
+        state.isScrolling = true;
+        state.lastScrollTime = Date.now();
+        state.scrollStartY = currentY;
+      }
+
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        state.isScrolling = false;
+      }, 200);
+    };
+
+    state.scrollStartY = window.scrollY;
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, []);
+
+  // Safe handler for card toggle that checks scroll state
+  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false) => {
+    const state = scrollStateRef.current;
+    const timeSinceScroll = Date.now() - state.lastScrollTime;
+    
+    // Don't toggle if:
+    // 1. Currently scrolling
+    // 2. Recently scrolled (within 400ms)
+    // 3. Touch moved (user was scrolling, not tapping)
+    if (state.isScrolling || timeSinceScroll < 400 || touchMoved) {
+      return;
+    }
+    
+    setSelectedService(isExpanded ? -1 : index);
+  }, []);
+
   return (
     <motion.section 
       id="marketing" 
@@ -1110,130 +1351,12 @@ export function MarketingServices() {
             return (
               <div key={service.title}>
                 {/* Service Button */}
-                <motion.button
-                  onClick={() => {
-                    // On mobile, allow full toggle behavior
-                    setSelectedService(isExpanded ? -1 : index);
-                  }}
-                  className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
-                  style={{
-                    background: isExpanded 
-                      ? `linear-gradient(135deg, ${service.accent}15, ${service.accent}08)`
-                      : 'transparent',
-                    borderWidth: '2px',
-                    borderStyle: 'solid',
-                    borderColor: isExpanded ? service.accent : `${service.accent}30`,
-                  }}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  {/* Animated floating dots for non-expanded cards */}
-                  {!isExpanded && [...Array(3)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      className="absolute w-1.5 h-1.5 rounded-full opacity-20 pointer-events-none"
-                      style={{
-                        backgroundColor: service.accent,
-                        top: `${30 + i * 20}%`,
-                        right: `${10 + (i % 2) * 5}%`,
-                      }}
-                      animate={{
-                        y: [0, -12, 0],
-                        x: [0, 6, 0],
-                        scale: [1, 1.2, 1],
-                        opacity: [0.2, 0.4, 0.2],
-                      }}
-                      transition={{
-                        duration: 3,
-                        repeat: Infinity,
-                        delay: i * 0.5,
-                        ease: "easeInOut"
-                      }}
-                    />
-                  ))}
-                  
-                  {/* Subtle orbital dots for expanded cards - always visible */}
-                  {isExpanded && [...Array(5)].map((_, i) => {
-                    const angle = (i * 360 / 5);
-                    const radius = 35;
-                    return (
-                      <motion.div
-                        key={`orbital-${i}`}
-                        className="absolute w-1.5 h-1.5 rounded-full opacity-20 pointer-events-none"
-                        style={{
-                          backgroundColor: service.accent,
-                          left: '50%',
-                          top: '50%',
-                        }}
-                        animate={{
-                          x: [
-                            Math.cos((angle) * Math.PI / 180) * radius,
-                            Math.cos((angle + 120) * Math.PI / 180) * radius,
-                            Math.cos((angle + 240) * Math.PI / 180) * radius,
-                            Math.cos((angle + 360) * Math.PI / 180) * radius,
-                          ],
-                          y: [
-                            Math.sin((angle) * Math.PI / 180) * radius,
-                            Math.sin((angle + 120) * Math.PI / 180) * radius,
-                            Math.sin((angle + 240) * Math.PI / 180) * radius,
-                            Math.sin((angle + 360) * Math.PI / 180) * radius,
-                          ],
-                        }}
-                        transition={{
-                          duration: 8,
-                          repeat: Infinity,
-                          delay: i * 0.4,
-                          ease: "linear"
-                        }}
-                      />
-                    );
-                  })}
-                  
-                  <div className="relative z-10 flex items-center gap-3">
-                    {/* Icon */}
-                    <div 
-                      className="p-2.5 rounded-lg flex-shrink-0 transition-all duration-300"
-                      style={{
-                        backgroundColor: isExpanded ? `${service.accent}30` : `${service.accent}15`,
-                        boxShadow: isExpanded ? `0 0 20px ${service.accent}40` : 'none',
-                      }}
-                    >
-                      <Icon 
-                        className="w-5 h-5" 
-                        style={{ color: service.accent }} 
-                        strokeWidth={1.5} 
-                      />
-                    </div>
-                    
-                    {/* Text */}
-                    <div className="flex-1 min-w-0">
-                      <h3 
-                        className="font-['Josefin_Sans'] text-lg mb-0.5 transition-colors duration-300"
-                        style={{ color: isExpanded ? service.accent : '#ECE7E1' }}
-                      >
-                        {service.title}
-                      </h3>
-                      <p className="font-['Lato'] text-[#ECE7E1]/60 text-xs line-clamp-1">
-                        {service.description}
-                      </p>
-                    </div>
-                    
-                    {/* Arrow indicator */}
-                    <motion.div
-                      animate={{ rotate: isExpanded ? 90 : 0 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      <ChevronRight 
-                        className="w-5 h-5 flex-shrink-0 transition-all duration-300" 
-                        style={{ 
-                          color: service.accent,
-                          opacity: isExpanded ? 1 : 0.5,
-                        }} 
-                      />
-                    </motion.div>
-                  </div>
-                </motion.button>
+                <MobileCardButton
+                  index={index}
+                  isExpanded={isExpanded}
+                  service={service}
+                  onToggle={handleCardToggle}
+                />
 
                 {/* Expanded Content */}
                 <AnimatePresence>

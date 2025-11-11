@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { Image, Sparkles, Video, ChevronRight, Palette } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import { useState, UIEvent, useEffect, useRef } from 'react';
+import { useState, UIEvent, useEffect, useRef, useCallback } from 'react';
 import EstetikaFront from '../assets/static/estetika1.png';
 import EstetikaBack from '../assets/static/estetika2.png';
 import HoroskopFront from '../assets/static/horoskop1.png';
@@ -223,6 +223,180 @@ const getWorkPosts = (t: (key: string) => string): WorkPost[] => [
   },
 ];
 
+// Mobile work card button component with scroll detection
+function MobileWorkCardButton({
+  work,
+  index,
+  isExpanded,
+  onToggle,
+}: {
+  work: WorkPost;
+  index: number;
+  isExpanded: boolean;
+  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean) => void;
+}) {
+  const Icon = work.icon;
+  const touchStateRef = useRef({
+    touchStartY: 0,
+    touchStartTime: 0,
+    touchMoved: false,
+  });
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch) {
+      touchStateRef.current.touchStartY = touch.clientY;
+      touchStateRef.current.touchStartTime = Date.now();
+      touchStateRef.current.touchMoved = false;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch && touchStateRef.current.touchStartTime > 0) {
+      const deltaY = Math.abs(touch.clientY - touchStateRef.current.touchStartY);
+      if (deltaY > 10) {
+        touchStateRef.current.touchMoved = true;
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const state = touchStateRef.current;
+    const touch = e.changedTouches[0];
+    if (touch && state.touchStartTime > 0) {
+      const timeDiff = Date.now() - state.touchStartTime;
+      const deltaY = Math.abs(touch.clientY - state.touchStartY);
+      
+      // Only toggle if it was a quick tap (not a scroll)
+      if (!state.touchMoved && timeDiff < 300 && deltaY < 10) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle(index, isExpanded, false);
+      }
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggle(index, isExpanded, false);
+  };
+
+  return (
+    <div>
+      {/* Work Button */}
+      <motion.button
+        onClick={handleClick}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
+        style={{
+          touchAction: 'manipulation',
+          background: isExpanded 
+            ? `linear-gradient(135deg, ${work.accent}15, ${work.accent}08)`
+            : 'transparent',
+          borderWidth: '2px',
+          borderStyle: 'solid',
+          borderColor: isExpanded ? work.accent : `${work.accent}30`,
+        }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.1 }}
+      >
+        {/* Animated floating dots */}
+        {!isExpanded && [...Array(3)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-1.5 h-1.5 rounded-full opacity-20 pointer-events-none"
+            style={{
+              backgroundColor: work.accent,
+              top: `${30 + i * 20}%`,
+              right: `${10 + (i % 2) * 5}%`,
+            }}
+            animate={{
+              y: [0, -12, 0],
+              x: [0, 6, 0],
+              scale: [1, 1.2, 1],
+              opacity: [0.2, 0.4, 0.2],
+            }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              delay: i * 0.5,
+              ease: "easeInOut"
+            }}
+          />
+        ))}
+        
+        <div className="relative z-10 flex items-start justify-between gap-3">
+          <div className="flex-1">
+            {/* Icon */}
+            <div 
+              className="p-2.5 rounded-lg inline-block mb-2"
+              style={{
+                backgroundColor: isExpanded ? `${work.accent}30` : `${work.accent}15`,
+              }}
+            >
+              <Icon 
+                className="w-5 h-5" 
+                style={{ color: work.accent }} 
+                strokeWidth={1.5} 
+              />
+            </div>
+            
+            {/* Title */}
+            <h3 
+              className="font-['Josefin_Sans'] text-lg mb-1 transition-colors duration-300"
+              style={{ color: isExpanded ? work.accent : '#ECE7E1' }}
+            >
+              {work.title}
+            </h3>
+            
+            {/* Description */}
+            <p className="font-['Lato'] text-[#ECE7E1]/70 text-xs leading-relaxed">
+              {work.description}
+            </p>
+          </div>
+          
+          {/* Arrow indicator */}
+          <div className="flex-shrink-0 flex items-center pt-1">
+            <motion.div
+              animate={{ rotate: isExpanded ? 90 : 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+            >
+              <ChevronRight 
+                className="w-5 h-5" 
+                style={{ color: work.accent }}
+                strokeWidth={2.5}
+              />
+            </motion.div>
+          </div>
+        </div>
+      </motion.button>
+
+      {/* Expanded Content */}
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="overflow-hidden"
+            style={{ minHeight: '500px' }}
+          >
+            <div className="pt-4 pb-2 px-2" style={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
+              <WorkGalleryPanel work={work} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // Individual work card component
 function WorkCard({ 
   work, 
@@ -390,6 +564,7 @@ function WorkGalleryPanel({ work }: { work: WorkPost }) {
   const [flippedMedia, setFlippedMedia] = useState<Record<string, boolean>>({});
   const [hoveredMedia, setHoveredMedia] = useState<string | null>(null);
   const [loadingVideos, setLoadingVideos] = useState<Record<string, boolean>>({});
+  const [isMobile, setIsMobile] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   
   useEffect(() => {
@@ -398,6 +573,16 @@ function WorkGalleryPanel({ work }: { work: WorkPost }) {
     // Reset loading states when work changes
     setLoadingVideos({});
   }, [work.id]);
+
+  // Detect mobile for scroll snap
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const getScrollAmount = () => {
     const container = containerRef.current;
@@ -453,9 +638,12 @@ function WorkGalleryPanel({ work }: { work: WorkPost }) {
           <div 
             id={`gallery-${work.id}`}
             ref={containerRef}
-            className="absolute inset-0 flex gap-3 md:gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide"
+            className="absolute inset-0 flex gap-3 md:gap-4 overflow-x-auto pb-2 scrollbar-hide"
             style={{
-              scrollSnapType: 'x mandatory',
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorX: 'contain',
+              // Disable scroll snap on mobile to prevent unwanted snapping during card expansion
+              scrollSnapType: isMobile ? 'none' : 'x mandatory',
             }}
             onScroll={(e: UIEvent<HTMLDivElement>) => {
               const target = e.target as HTMLDivElement;
@@ -479,13 +667,15 @@ function WorkGalleryPanel({ work }: { work: WorkPost }) {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.1 + i * 0.05 }}
-                  className={`relative rounded-lg md:rounded-xl overflow-hidden border flex-shrink-0 snap-start ${isFlippable ? 'flippable-card' : ''}`}
+                  className={`relative rounded-lg md:rounded-xl overflow-hidden border flex-shrink-0 ${isFlippable ? 'flippable-card' : ''}`}
                   data-gallery-card
                   style={{
                     height: '100%',
                     aspectRatio: aspectRatio,
                     borderColor: `${work.accent}30`,
                     cursor: isFlippable ? 'pointer' : 'default',
+                    // Only apply snap on desktop
+                    scrollSnapAlign: isMobile ? 'none' : 'start',
                   }}
                   onClick={isFlippable ? () => toggleFlip(media.id) : undefined}
                   onMouseEnter={() => setHoveredMedia(media.id)}
@@ -765,6 +955,42 @@ export function OurWorkSection() {
     return 0;
   });
 
+  // Track scroll state to prevent card toggles during scroll
+  const scrollStateRef = useRef({
+    isScrolling: false,
+    lastScrollTime: 0,
+    scrollStartY: 0,
+  });
+
+  useEffect(() => {
+    const state = scrollStateRef.current;
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const handleScroll = () => {
+      const currentY = window.scrollY;
+      const scrollDelta = Math.abs(currentY - state.scrollStartY);
+      
+      if (scrollDelta > 3) {
+        state.isScrolling = true;
+        state.lastScrollTime = Date.now();
+        state.scrollStartY = currentY;
+      }
+
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        state.isScrolling = false;
+      }, 200);
+    };
+
+    state.scrollStartY = window.scrollY;
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, []);
+
   // Handle window resize to update selectedWork state
   useEffect(() => {
     const handleResize = () => {
@@ -784,6 +1010,22 @@ export function OurWorkSection() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [selectedWork]);
+
+  // Safe handler for card toggle that checks scroll state
+  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false) => {
+    const state = scrollStateRef.current;
+    const timeSinceScroll = Date.now() - state.lastScrollTime;
+    
+    // Don't toggle if:
+    // 1. Currently scrolling
+    // 2. Recently scrolled (within 400ms)
+    // 3. Touch moved (user was scrolling, not tapping)
+    if (state.isScrolling || timeSinceScroll < 400 || touchMoved) {
+      return;
+    }
+    
+    setSelectedWork(isExpanded ? -1 : index);
+  }, []);
 
   return (
     <section id="blog" className="relative py-16 md:py-24 bg-[#0A0A0A]">
@@ -819,117 +1061,15 @@ export function OurWorkSection() {
         <div className="md:hidden space-y-3">
           {workPosts.map((work, index) => {
             const isExpanded = selectedWork === index;
-            const Icon = work.icon;
             
             return (
-              <div key={work.id}>
-                {/* Work Button */}
-                <motion.button
-                  onClick={() => {
-                    setSelectedWork(isExpanded ? -1 : index);
-                  }}
-                  className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
-                  style={{
-                    background: isExpanded 
-                      ? `linear-gradient(135deg, ${work.accent}15, ${work.accent}08)`
-                      : 'transparent',
-                    borderWidth: '2px',
-                    borderStyle: 'solid',
-                    borderColor: isExpanded ? work.accent : `${work.accent}30`,
-                  }}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  {/* Animated floating dots */}
-                  {!isExpanded && [...Array(3)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      className="absolute w-1.5 h-1.5 rounded-full opacity-20 pointer-events-none"
-                      style={{
-                        backgroundColor: work.accent,
-                        top: `${30 + i * 20}%`,
-                        right: `${10 + (i % 2) * 5}%`,
-                      }}
-                      animate={{
-                        y: [0, -12, 0],
-                        x: [0, 6, 0],
-                        scale: [1, 1.2, 1],
-                        opacity: [0.2, 0.4, 0.2],
-                      }}
-                      transition={{
-                        duration: 3,
-                        repeat: Infinity,
-                        delay: i * 0.5,
-                        ease: "easeInOut"
-                      }}
-                    />
-                  ))}
-                  
-                  <div className="relative z-10 flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      {/* Icon */}
-                      <div 
-                        className="p-2.5 rounded-lg inline-block mb-2"
-                        style={{
-                          backgroundColor: isExpanded ? `${work.accent}30` : `${work.accent}15`,
-                        }}
-                      >
-                        <Icon 
-                          className="w-5 h-5" 
-                          style={{ color: work.accent }} 
-                          strokeWidth={1.5} 
-                        />
-                      </div>
-                      
-                      {/* Title */}
-                      <h3 
-                        className="font-['Josefin_Sans'] text-lg mb-1 transition-colors duration-300"
-                        style={{ color: isExpanded ? work.accent : '#ECE7E1' }}
-                      >
-                        {work.title}
-                      </h3>
-                      
-                      {/* Description */}
-                      <p className="font-['Lato'] text-[#ECE7E1]/70 text-xs leading-relaxed">
-                        {work.description}
-                      </p>
-                    </div>
-                    
-                    {/* Arrow indicator */}
-                    <div className="flex-shrink-0 flex items-center pt-1">
-                      <motion.div
-                        animate={{ rotate: isExpanded ? 90 : 0 }}
-                        transition={{ duration: 0.3, ease: "easeInOut" }}
-                      >
-                        <ChevronRight 
-                          className="w-5 h-5" 
-                          style={{ color: work.accent }}
-                          strokeWidth={2.5}
-                        />
-                      </motion.div>
-                    </div>
-                  </div>
-                </motion.button>
-
-                {/* Expanded Content */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="overflow-hidden"
-                      style={{ minHeight: '500px' }}
-                    >
-                      <div className="pt-4 pb-2 px-2" style={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
-                        <WorkGalleryPanel work={work} />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              <MobileWorkCardButton
+                key={work.id}
+                work={work}
+                index={index}
+                isExpanded={isExpanded}
+                onToggle={handleCardToggle}
+              />
             );
           })}
         </div>
