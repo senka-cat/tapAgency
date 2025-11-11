@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef, UIEvent } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import LessButton from './LessButton';
 import { ScrollArea } from './ui/scroll-area';
+import { useMobileCardTouchHandler } from './shared/MobileCardTouchHandler';
 import { useLanguage } from './LanguageContext';
 import Group62 from '../imports/Group62-204-1310';
 const marketingImageOne = new URL('../assets/marketing1.png', import.meta.url).href;
@@ -487,7 +488,7 @@ function ServiceCard({ service, index, isMobile, isFlipped, onFlip }: {
   );
 }
 
-// Mobile card button component with scroll detection
+// Mobile card button component with unified touch handling
 function MobileCardButton({ 
   index, 
   isExpanded, 
@@ -497,119 +498,25 @@ function MobileCardButton({
   index: number; 
   isExpanded: boolean; 
   service: MarketingService;
-  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean, force?: boolean) => void;
+  onToggle: (index: number) => void;
 }) {
   const Icon = service.icon;
-  const touchStateRef = useRef({
-    touchStartY: 0,
-    touchStartX: 0,
-    touchStartTime: 0,
-    touchMoved: false,
-    touchStartScrollY: 0,
-  });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    // Only handle if touch is directly on this button
-    if (e.target !== buttonRef.current && !buttonRef.current?.contains(e.target as Node)) {
-      return;
-    }
-    
-    const touch = e.touches[0];
-    if (touch) {
-      touchStateRef.current.touchStartY = touch.clientY;
-      touchStateRef.current.touchStartX = touch.clientX;
-      touchStateRef.current.touchStartTime = Date.now();
-      touchStateRef.current.touchMoved = false;
-      touchStateRef.current.touchStartScrollY = window.scrollY;
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    if (touch && touchStateRef.current.touchStartTime > 0) {
-      const deltaY = Math.abs(touch.clientY - touchStateRef.current.touchStartY);
-      const deltaX = Math.abs(touch.clientX - touchStateRef.current.touchStartX);
-      const scrollDelta = Math.abs(window.scrollY - touchStateRef.current.touchStartScrollY);
-      
-      // If user moved significantly or page scrolled, it's a scroll gesture
-      if (deltaY > 8 || deltaX > 8 || scrollDelta > 5) {
-        touchStateRef.current.touchMoved = true;
-      }
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    // Don't process if touch didn't start on this button
-    if (touchStateRef.current.touchStartTime === 0) {
-      return;
-    }
-    
-    const state = touchStateRef.current;
-    const touch = e.changedTouches[0];
-    if (touch && state.touchStartTime > 0) {
-      const timeDiff = Date.now() - state.touchStartTime;
-      const deltaY = Math.abs(touch.clientY - state.touchStartY);
-      const deltaX = Math.abs(touch.clientX - state.touchStartX);
-      const scrollDelta = Math.abs(window.scrollY - state.touchStartScrollY);
-      
-      // EXTREMELY strict criteria for a tap (especially when closing):
-      // 1. No movement detected at all
-      // 2. Very quick tap (<200ms)
-      // 3. Absolutely minimal movement (<5px)
-      // 4. Page didn't scroll AT ALL during touch
-      // 5. For closing expanded cards, be even stricter
-      const isValidTap = !state.touchMoved && 
-                        timeDiff < 200 && 
-                        deltaY < 5 && 
-                        deltaX < 5 && 
-                        scrollDelta < 3;
-      
-      // Extra check: if card is expanded, require even stricter criteria
-      if (isExpanded) {
-        if (!isValidTap || scrollDelta > 0 || state.touchMoved) {
-          // Definitely a scroll, don't close
-          touchStateRef.current.touchStartTime = 0;
-          touchStateRef.current.touchMoved = false;
-          return;
-        }
-      }
-      
-      if (isValidTap) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Small delay to ensure scroll detection has processed
-        setTimeout(() => {
-          onToggle(index, isExpanded, false, true);
-        }, 50);
-      }
-      
-      // Reset touch state
-      touchStateRef.current.touchStartTime = 0;
-      touchStateRef.current.touchMoved = false;
-    }
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
-    // Only process clicks, not touch events (touch is handled separately)
-    if (e.type === 'click' && (e as any).pointerType !== 'touch') {
-      e.preventDefault();
-      e.stopPropagation();
-      onToggle(index, isExpanded, false, true);
-    }
-  };
+  
+  // Use unified touch handler
+  const { handleTouchStart, handleTouchMove, handleTouchEnd, handleClick, touchAction } = useMobileCardTouchHandler(
+    () => onToggle(index),
+    isExpanded
+  );
 
   return (
     <motion.button
-      ref={buttonRef}
       onClick={handleClick}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
       style={{
-        // Allow pan-y for vertical scrolling when card is expanded
-        touchAction: isExpanded ? 'pan-y' : 'manipulation',
+        touchAction,
         WebkitTouchCallout: 'none',
         userSelect: 'none',
         background: isExpanded 
@@ -622,7 +529,6 @@ function MobileCardButton({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      // Prevent any interaction during scroll
       whileTap={isExpanded ? {} : { scale: 0.98 }}
     >
       {/* Animated floating dots for non-expanded cards */}
@@ -1287,20 +1193,17 @@ export function MarketingServices() {
     };
   }, [emblaApi, onSelect]);
 
-  // Handle window resize to update selectedService state
+  // Handle window resize - only adjust for desktop, never close cards on mobile resize
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 768) {
-        // Mobile: close if currently open
-        if (selectedService >= 0) {
-          setSelectedService(-1);
-        }
-      } else {
+      // Only handle desktop transitions - don't close cards on mobile
+      if (window.innerWidth >= 768) {
         // Desktop: open first tab if currently closed
         if (selectedService < 0) {
           setSelectedService(0);
         }
       }
+      // Mobile: Don't interfere with card state - let user control it
     };
 
     window.addEventListener('resize', handleResize);
@@ -1314,23 +1217,9 @@ export function MarketingServices() {
   // Removed scroll-based card closing prevention
   // Cards will only close on explicit user tap, not when scrolling between sections
 
-  // Safe handler for card toggle that checks scroll state
-  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false, force: boolean = false) => {
-    // CRITICAL: On mobile, only prevent toggle if touch moved on the button itself
-    // Don't prevent toggle just because user scrolled the page - only prevent if touch moved on the button
-    // This allows cards to stay open when scrolling between sections
-    if (!force) {
-      // Only prevent if touch moved on the button (scroll gesture on button)
-      // Allow toggle even if page was scrolled, as long as the button wasn't scrolled on
-      if (touchMoved) {
-        // Touch moved on button = scroll gesture, don't toggle
-        return;
-      }
-    }
-    
-    // Only allow toggle if all checks pass
-    // Cards will only close on explicit tap, not when scrolling between sections
-    setSelectedService(isExpanded ? -1 : index);
+  // Simple card toggle handler - cards only toggle on explicit button tap
+  const handleCardToggle = useCallback((index: number) => {
+    setSelectedService(prev => prev === index ? -1 : index);
   }, []);
 
   return (
@@ -1383,7 +1272,7 @@ export function MarketingServices() {
                   index={index}
                   isExpanded={isExpanded}
                   service={service}
-                  onToggle={handleCardToggle}
+                  onToggle={(idx) => handleCardToggle(idx)}
                 />
 
                 {/* Expanded Content */}
@@ -1394,18 +1283,20 @@ export function MarketingServices() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="overflow-visible"
+                      className="relative"
                       style={{
-                        // Enable touch scrolling on Android
-                        touchAction: 'pan-y',
+                        // Enable touch scrolling on Android and iOS
+                        touchAction: 'pan-y pan-x',
                         WebkitOverflowScrolling: 'touch',
                         pointerEvents: 'auto',
+                        zIndex: 5,
                       }}
                     >
                       <div 
                         className="pt-4 pb-2 space-y-4"
                         style={{
-                          touchAction: 'pan-y',
+                          touchAction: 'pan-y pan-x',
+                          WebkitOverflowScrolling: 'touch',
                           pointerEvents: 'auto',
                         }}
                       >

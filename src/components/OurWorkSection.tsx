@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Image, Sparkles, Video, ChevronRight, Palette } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useState, UIEvent, useEffect, useRef, useCallback } from 'react';
+import { useMobileCardTouchHandler } from './shared/MobileCardTouchHandler';
 import EstetikaFront from '../assets/static/estetika1.png';
 import EstetikaBack from '../assets/static/estetika2.png';
 import HoroskopFront from '../assets/static/horoskop1.png';
@@ -223,7 +224,7 @@ const getWorkPosts = (t: (key: string) => string): WorkPost[] => [
   },
 ];
 
-// Mobile work card button component with scroll detection
+// Mobile work card button component with unified touch handling
 function MobileWorkCardButton({
   work,
   index,
@@ -233,79 +234,35 @@ function MobileWorkCardButton({
   work: WorkPost;
   index: number;
   isExpanded: boolean;
-  onToggle: (index: number, isExpanded: boolean, touchMoved: boolean, force?: boolean) => void;
+  onToggle: (index: number) => void;
 }) {
   const Icon = work.icon;
-  const touchStateRef = useRef({
-    touchStartY: 0,
-    touchStartTime: 0,
-    touchMoved: false,
-  });
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    if (touch) {
-      touchStateRef.current.touchStartY = touch.clientY;
-      touchStateRef.current.touchStartTime = Date.now();
-      touchStateRef.current.touchMoved = false;
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    if (touch && touchStateRef.current.touchStartTime > 0) {
-      const deltaY = Math.abs(touch.clientY - touchStateRef.current.touchStartY);
-      if (deltaY > 10) {
-        touchStateRef.current.touchMoved = true;
-      }
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const state = touchStateRef.current;
-    const touch = e.changedTouches[0];
-    if (touch && state.touchStartTime > 0) {
-      const timeDiff = Date.now() - state.touchStartTime;
-      const deltaY = Math.abs(touch.clientY - state.touchStartY);
-      
-      // Only toggle if it was a quick tap (not a scroll on the button itself)
-      // Allow toggle even if page scrolled, as long as finger didn't move on button
-      if (!state.touchMoved && timeDiff < 300 && deltaY < 10) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Force toggle since it's a valid tap
-        onToggle(index, isExpanded, false, true);
-      }
-    }
-    // Reset touch state
-    touchStateRef.current.touchStartTime = 0;
-    touchStateRef.current.touchMoved = false;
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onToggle(index, isExpanded, false, true);
-  };
+  
+  // Use unified touch handler
+  const { handleTouchStart, handleTouchMove, handleTouchEnd, handleClick, touchAction } = useMobileCardTouchHandler(
+    () => onToggle(index),
+    isExpanded
+  );
 
   return (
-    <div>
+    <div className="relative">
       {/* Work Button */}
       <motion.button
         onClick={handleClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer"
+        className="relative w-full text-left overflow-hidden rounded-xl p-4 group cursor-pointer z-10"
         style={{
-          // Allow pan-y for vertical scrolling when card is expanded
-          touchAction: isExpanded ? 'pan-y' : 'manipulation',
+          touchAction,
           background: isExpanded 
             ? `linear-gradient(135deg, ${work.accent}15, ${work.accent}08)`
             : 'transparent',
           borderWidth: '2px',
           borderStyle: 'solid',
           borderColor: isExpanded ? work.accent : `${work.accent}30`,
+          // When expanded, don't block touches below (allow scrolling through)
+          pointerEvents: isExpanded ? 'auto' : 'auto',
         }}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -390,12 +347,14 @@ function MobileWorkCardButton({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="overflow-visible"
+            className="relative"
             style={{ 
               minHeight: '500px',
-              // Prevent any scroll behavior that could cause snapping
-              scrollMargin: 0,
-              scrollPadding: 0,
+              // Ensure content is above button for proper z-ordering
+              zIndex: 5,
+              // Allow all touch interactions
+              touchAction: 'pan-y pan-x',
+              pointerEvents: 'auto',
             }}
           >
             <div 
@@ -404,10 +363,9 @@ function MobileWorkCardButton({
                 height: '500px', 
                 display: 'flex', 
                 flexDirection: 'column',
-                // Prevent scroll snapping
-                scrollSnapAlign: 'none',
-                scrollSnapStop: 'normal',
-                // Ensure pointer events work and allow touch
+                // Ensure touch scrolling works
+                touchAction: 'pan-y pan-x',
+                WebkitOverflowScrolling: 'touch',
                 pointerEvents: 'auto',
               }}
             >
@@ -996,17 +954,7 @@ export function OurWorkSection() {
     setSelectedWork(value);
   }, []);
 
-  // Track scroll state - but don't use it to prevent card toggles
-  // Cards should only close on explicit tap, not based on scroll position
-  // This ref is kept for potential future use but not blocking toggles
-  const scrollStateRef = useRef({
-    isScrolling: false,
-    lastScrollTime: 0,
-    scrollStartY: 0,
-  });
-
-  // Removed scroll-based card closing prevention
-  // Cards will only close on explicit user tap, not when scrolling between sections
+  // Cards will only close on explicit user tap - no scroll tracking needed
 
   // Handle window resize to update selectedWork state
   useEffect(() => {
@@ -1035,36 +983,16 @@ export function OurWorkSection() {
     }
   }, [selectedWork, workPosts.length, setSelectedWorkSafe]);
 
-  // Safe handler for card toggle that checks scroll state
-  const handleCardToggle = useCallback((index: number, isExpanded: boolean, touchMoved: boolean = false, force: boolean = false) => {
-    const state = scrollStateRef.current;
-    const timeSinceScroll = Date.now() - state.lastScrollTime;
+  // Simple card toggle handler
+  const handleCardToggle = useCallback((index: number) => {
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
     
-    // CRITICAL: On mobile, only prevent toggle if it's clearly a scroll gesture
-    // Don't prevent toggle just because user scrolled the page - only prevent if touch moved on the button
-    if (!force && !isDesktop) {
-      // Mobile: Only prevent if touch moved on the button itself (scroll gesture on button)
-      // Allow toggle even if page was scrolled, as long as the button wasn't scrolled on
-      if (touchMoved) {
-        // Touch moved on button = scroll gesture, don't toggle
-        return;
-      }
-    }
-    
-    // Desktop: Only allow switching, never closing
     if (isDesktop) {
-      if (isExpanded) {
-        // Can't close on desktop, do nothing
-        return;
-      } else {
-        // Switching to a different tab
-        setSelectedWorkSafe(index);
-      }
+      // Desktop: Only allow switching, never closing
+      setSelectedWorkSafe(index);
     } else {
-      // Mobile: Allow opening/closing - only close on explicit tap (force=true or no scroll on button)
-      // This allows cards to stay open when scrolling between sections
-      setSelectedWorkSafe(isExpanded ? -1 : index);
+      // Mobile: Toggle on/off
+      setSelectedWorkSafe(prev => prev === index ? -1 : index);
     }
   }, [setSelectedWorkSafe]);
 
@@ -1109,7 +1037,7 @@ export function OurWorkSection() {
                 work={work}
                 index={index}
                 isExpanded={isExpanded}
-                onToggle={(idx, expanded, moved, force) => handleCardToggle(idx, expanded, moved, force)}
+                onToggle={(idx) => handleCardToggle(idx)}
               />
             );
           })}
